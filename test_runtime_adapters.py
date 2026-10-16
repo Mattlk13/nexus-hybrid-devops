@@ -38,8 +38,8 @@ class ContainerLifecycleTests(unittest.TestCase):
         from nexus_runtime_adapters import create_container
         image='sha256:'+'a'*64
         item={'Id':'b'*64,'Image':image,'State':{'Running':False}}
-        with patch.dict(os.environ,{'NEXUS_CONTAINER_RUNTIME':'docker','NEXUS_CERTIFICATION_IMAGE':image}),patch('nexus_runtime_adapters._inspect',return_value=item),patch('nexus_runtime_adapters.subprocess.run',side_effect=[subprocess.CompletedProcess([],0),subprocess.CalledProcessError(1,'start'),subprocess.CompletedProcess([],0)]) as run:
-            with self.assertRaisesRegex(RuntimeErrorSafe,'cleanup_requested'):
+        with patch.dict(os.environ,{'NEXUS_CONTAINER_RUNTIME':'docker','NEXUS_CERTIFICATION_IMAGE':image}),patch('nexus_runtime_adapters._inspect',return_value=item),patch('nexus_runtime_adapters.list_containers',return_value={'containers':[]}),patch('nexus_runtime_adapters.subprocess.run',side_effect=[subprocess.CompletedProcess([],0),subprocess.CalledProcessError(1,'start'),subprocess.CompletedProcess([],0)]) as run:
+            with self.assertRaisesRegex(RuntimeErrorSafe,'cleanup_verified'):
                 create_container({'image':image,'request_id':'failure'})
             self.assertEqual(run.call_args.args[0],['docker','rm','--force','nexus-cert-failure'])
     def test_existing_container_with_different_image_fails(self):

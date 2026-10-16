@@ -15,3 +15,21 @@ class ContainerIntegrationTests(unittest.TestCase):
             self.assertTrue(stop_container(name)['verified'])
         finally:
             subprocess.run([runtime,'rm','--force',name],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
+
+@unittest.skipUnless(os.getenv('NEXUS_CERTIFICATION_IMAGE'), 'isolated runtime/image not configured')
+class ContainerRollbackTests(unittest.TestCase):
+    def test_failed_start_removes_real_fixture_and_verifies_absence(self):
+        from unittest.mock import patch
+        from nexus_runtime_adapters import RuntimeErrorSafe,list_containers
+        runtime=os.environ['NEXUS_CONTAINER_RUNTIME'];key='rollback-'+str(os.getpid());name='nexus-cert-'+key
+        original=subprocess.run
+        def fail_start(args,**kwargs):
+            if args[:2]==[runtime,'start']: raise subprocess.CalledProcessError(1,args)
+            return original(args,**kwargs)
+        try:
+            with patch('nexus_runtime_adapters.subprocess.run',side_effect=fail_start):
+                with self.assertRaisesRegex(RuntimeErrorSafe,'cleanup_verified'):
+                    create_container({'image':os.environ['NEXUS_CERTIFICATION_IMAGE'],'request_id':key})
+            self.assertTrue(list_containers()['verified'])
+        finally:
+            original([runtime,'rm','--force',name],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)

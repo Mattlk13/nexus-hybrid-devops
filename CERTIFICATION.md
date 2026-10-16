@@ -1,3 +1,18 @@
+# NEXUS resumed certification — 2026-10-16
+
+Decision: **HOLD**. No production deployment, merge, release publication or service purchase.
+
+## Resumed certification results
+
+- PASS: real Terraform 1.13.5 binary, checksum verified against the official release SHA256SUMS. Isolated built-in terraform_data resource creation, duplicate reconciliation, refresh-only state verification, destroy rollback and empty-state readback pass. Seven Terraform tests pass (1 real lifecycle + 6 policy tests).
+- PASS: real Podman lifecycle and injected-start-failure rollback tests on MattWorkspace (2 tests, 15.456s). The failed start creates a real fixture, removes it and queries the runtime to verify absence. Stop is bound to the inspected immutable container ID. Docker/Podman image ID formatting is normalized.
+- Terraform engine create/destroy operations now use the real guarded adapter. The workspace must have .nexus-certification; production is rejected, an existing nonempty workspace is rejected, the plan must contain only allowlisted creates/deletes, and unknown/pending outcomes block blind retries. Default resource allowlist is terraform_data only; no billable cloud resources were created.
+- Local suite with Terraform available: 19 pass, 2 runtime tests skip; those two runtime tests pass separately against Podman.
+- STILL BLOCKED: provider-specific cloud credential/target acceptance and actual application deployment/rollback. Terraform's built-in resource fixture does not certify a cloud provider. Deployment and alert APIs remain disabled; no provider or application success is invented.
+- Current-head hosted CI is queued, not passed.
+
+## Earlier evidence (historical)
+
 # NEXUS certification evidence — 2026-10-16
 
 Decision: **HOLD**. Draft PR #1; no merge, production deployment, service purchase, or publication authorized by this evidence.

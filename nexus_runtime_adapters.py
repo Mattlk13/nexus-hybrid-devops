@@ -107,7 +107,8 @@ def create_container(config):
     except subprocess.TimeoutExpired as exc: raise RuntimeErrorSafe('creation_outcome_unknown') from exc
     except OSError as exc: raise RuntimeErrorSafe('adapter_unavailable') from exc
     item=_inspect(runtime,name)
-    if item.get('Image')!=image: raise RuntimeErrorSafe('duplicate_request_conflict')
+    actual_image = str(item.get('Image', '')).removeprefix('sha256:')
+    if actual_image != image.removeprefix('sha256:'): raise RuntimeErrorSafe('duplicate_request_conflict')
     if item.get('State',{}).get('Running'):
         return {'success':True,'container':{'id':item['Id'],'status':'running'},'verified':True,'duplicate':True}
     if result.returncode: raise RuntimeErrorSafe('duplicate_request_not_running')
@@ -123,18 +124,23 @@ def create_container(config):
                            stderr=subprocess.DEVNULL,timeout=20)
         except (OSError,subprocess.SubprocessError):
             raise RuntimeErrorSafe('container_start_failed_cleanup_unconfirmed') from exc
-        raise RuntimeErrorSafe('container_start_failed_cleanup_requested') from exc
+        if any(entry['id'] == item['Id'] or item['Id'].startswith(entry['id']) for entry in list_containers()['containers']):
+            raise RuntimeErrorSafe('container_start_failed_cleanup_unconfirmed') from exc
+        raise RuntimeErrorSafe('container_start_failed_cleanup_verified') from exc
     return {'success':True,'container':{'id':item['Id'],'status':'running'},'verified':True,'duplicate':False}
 
 def stop_container(identity):
     runtime=_runtime()
     if not isinstance(identity,str) or not re.fullmatch(r'nexus-cert-[a-z0-9-]{1,40}',identity):
         raise RuntimeErrorSafe('certification_name_required')
-    _inspect(runtime,identity)
+    before = _inspect(runtime,identity)
+    runtime_id = before.get('Id')
+    if not isinstance(runtime_id, str) or not re.fullmatch('[a-f0-9]{64}', runtime_id):
+        raise RuntimeErrorSafe('container_identity_unconfirmed')
     try:
-        subprocess.run([runtime,'stop','--time','5',identity],check=True,stdout=subprocess.DEVNULL,
+        subprocess.run([runtime,'stop','--time','5',runtime_id],check=True,stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL,timeout=20)
     except (OSError,subprocess.SubprocessError) as exc: raise RuntimeErrorSafe('stop_outcome_unconfirmed') from exc
-    item=_inspect(runtime,identity)
+    item=_inspect(runtime,runtime_id)
     if item.get('State',{}).get('Running') is not False: raise RuntimeErrorSafe('container_stop_unconfirmed')
     return {'success':True,'container_id':identity,'status':'stopped','verified':True}
