@@ -60,15 +60,10 @@ class HybridDevOpsEngine:
                 "resource_id": resource_id, "executed": False}
 
     async def get_infrastructure_state(self) -> Dict:
-        """Get current infrastructure state"""
-        return {
-            "total_resources": len(self.resources),
-            "by_type": self._group_by_key(self.resources, "type"),
-            "by_provider": self._group_by_key(self.resources, "provider"),
-            "by_state": self._group_by_key(self.resources, "state"),
-            "resources": list(self.resources.values())
-        }
-    
+        """Real infrastructure inventory requires a provider."""
+        return {"success": False, "error": "infrastructure_provider_not_configured",
+                "resources": None}
+
     # ==================== CONTAINER MANAGEMENT ====================
     
     async def create_container(self, config: Dict) -> Dict:
@@ -77,20 +72,10 @@ class HybridDevOpsEngine:
                 "container": None, "executed": False}
 
     async def list_containers(self, status: Optional[str] = None) -> Dict:
-        """List all containers"""
-        containers = [
-            r for r in self.resources.values()
-            if r.get("image")  # Has image = is a container
-        ]
-        
-        if status:
-            containers = [c for c in containers if c.get("status") == status]
-        
-        return {
-            "total": len(containers),
-            "containers": containers
-        }
-    
+        """Container discovery cannot rely on local simulated state."""
+        return {"success": False, "error": "container_runtime_not_configured",
+                "containers": None}
+
     async def stop_container(self, container_id: str) -> Dict:
         """Require confirmed stop from a real container runtime."""
         return {"success": False, "error": "container_runtime_not_configured",
@@ -175,34 +160,10 @@ class HybridDevOpsEngine:
             return {"success": False, "error": str(e)}
     
     async def create_alert(self, config: Dict) -> Dict:
-        """
-        Create monitoring alert (Prometheus Alertmanager-style)
-        """
-        try:
-            alert = {
-                "id": f"alert_{int(datetime.now(timezone.utc).timestamp())}",
-                "name": config.get('name'),
-                "condition": config.get('condition'),  # e.g., "cpu > 80"
-                "service": config.get('service'),
-                "severity": config.get('severity', 'warning'),
-                "notification_channels": config.get('channels', ['email']),
-                "enabled": True,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            if self.db:
-                await self.db.alerts.insert_one(alert)
-            
-            return {
-                "success": True,
-                "alert": alert,
-                "message": f"Alert '{alert['name']}' created"
-            }
-            
-        except Exception as e:
-            logger.error(f"Alert creation failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+        """Monitoring alerts require a real notification/alert backend."""
+        return {"success": False, "error": "alert_backend_not_configured",
+                "executed": False}
+
     # ==================== DEPLOYMENT AUTOMATION ====================
     
     async def deploy_service(self, service: str, environment: str, version: str,
@@ -213,57 +174,15 @@ class HybridDevOpsEngine:
                 "executed": False}
 
     async def rollback_deployment(self, service: str, environment: str) -> Dict:
-        """Rollback to previous deployment"""
-        try:
-            # Find previous deployment
-            service_deployments = [
-                d for d in self.deployments.values()
-                if d["service"] == service and d["environment"] == environment
-            ]
-            
-            if len(service_deployments) < 2:
-                return {"success": False, "error": "No previous deployment found"}
-            
-            # Get previous version
-            previous = sorted(service_deployments, key=lambda x: x["started_at"])[-2]
-            
-            # Redeploy previous version
-            result = await self.deploy_service(
-                service,
-                environment,
-                previous["version"],
-                strategy="immediate"
-            )
-            
-            return {
-                **result,
-                "rollback": True,
-                "previous_version": previous["version"]
-            }
-            
-        except Exception as e:
-            logger.error(f"Rollback failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def get_deployment_history(
-        self, 
-        service: Optional[str] = None,
-        environment: Optional[str] = None
-    ) -> Dict:
-        """Get deployment history"""
-        deployments = list(self.deployments.values())
-        
-        if service:
-            deployments = [d for d in deployments if d["service"] == service]
-        
-        if environment:
-            deployments = [d for d in deployments if d["environment"] == environment]
-        
-        return {
-            "total": len(deployments),
-            "deployments": sorted(deployments, key=lambda x: x["started_at"], reverse=True)
-        }
-    
+        """Rollback requires a verified deployment adapter."""
+        return {"success": False, "error": "deployment_runner_not_configured",
+                "service": service, "environment": environment, "executed": False}
+
+    async def get_deployment_history(self, service: Optional[str] = None, environment: Optional[str] = None) -> Dict:
+        """Do not treat in-memory test records as deployment history."""
+        return {"success": False, "error": "deployment_runner_not_configured",
+                "deployments": None}
+
     # ==================== LOG MANAGEMENT ====================
     
     async def ingest_logs(self, source: str, logs: List[str]) -> Dict:
@@ -412,7 +331,7 @@ class HybridDevOpsEngine:
             "error_tracking": {
                 "features": ["track", "group", "resolve"]
             },
-            "status": "operational"
+            "status": "integration_not_configured"
         }
 
 def create_devops_engine(db=None):
