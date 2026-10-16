@@ -25,3 +25,26 @@ class RuntimeAdapterTests(unittest.TestCase):
             self.assertEqual(result['resource_count'],1)
             self.assertFalse(result['live_provider_verified'])
             self.assertNotIn('secret',str(result).lower().replace('secrets_redacted',''))
+
+class ContainerLifecycleTests(unittest.TestCase):
+    def test_duplicate_reuses_verified_container(self):
+        from nexus_runtime_adapters import create_container
+        image='sha256:'+'a'*64
+        item={'Id':'b'*64,'Image':image,'State':{'Running':True}}
+        with patch.dict(os.environ,{'NEXUS_CONTAINER_RUNTIME':'docker','NEXUS_CERTIFICATION_IMAGE':image}),patch('nexus_runtime_adapters.subprocess.run',return_value=subprocess.CompletedProcess([],1)),patch('nexus_runtime_adapters._inspect',return_value=item):
+            result=create_container({'image':image,'request_id':'duplicate'})
+            self.assertTrue(result['duplicate']);self.assertTrue(result['verified'])
+    def test_start_failure_requests_scoped_cleanup(self):
+        from nexus_runtime_adapters import create_container
+        image='sha256:'+'a'*64
+        item={'Id':'b'*64,'Image':image,'State':{'Running':False}}
+        with patch.dict(os.environ,{'NEXUS_CONTAINER_RUNTIME':'docker','NEXUS_CERTIFICATION_IMAGE':image}),patch('nexus_runtime_adapters._inspect',return_value=item),patch('nexus_runtime_adapters.subprocess.run',side_effect=[subprocess.CompletedProcess([],0),subprocess.CalledProcessError(1,'start'),subprocess.CompletedProcess([],0)]) as run:
+            with self.assertRaisesRegex(RuntimeErrorSafe,'cleanup_requested'):
+                create_container({'image':image,'request_id':'failure'})
+            self.assertEqual(run.call_args.args[0],['docker','rm','--force','nexus-cert-failure'])
+    def test_existing_container_with_different_image_fails(self):
+        from nexus_runtime_adapters import create_container
+        image='sha256:'+'a'*64
+        with patch.dict(os.environ,{'NEXUS_CONTAINER_RUNTIME':'docker','NEXUS_CERTIFICATION_IMAGE':image}),patch('nexus_runtime_adapters.subprocess.run',return_value=subprocess.CompletedProcess([],1)),patch('nexus_runtime_adapters._inspect',return_value={'Image':'different'}):
+            with self.assertRaisesRegex(RuntimeErrorSafe,'duplicate_request_conflict'):
+                create_container({'image':image,'request_id':'conflict'})

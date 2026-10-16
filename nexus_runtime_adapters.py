@@ -20,6 +20,7 @@ def _run(argv, cwd=None):
     except OSError as exc: raise RuntimeErrorSafe('adapter_unavailable') from exc
     if result.returncode: raise RuntimeErrorSafe('adapter_operation_failed')
     if len(result.stdout)>1048576: raise RuntimeErrorSafe('adapter_response_too_large')
+    if argv[1:2] == ['ps'] and not result.stdout.strip(): return []
     try: return json.loads(result.stdout)
     except ValueError as exc:
         if argv[1:2] == ['ps']:
