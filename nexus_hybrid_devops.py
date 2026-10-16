@@ -1,3 +1,4 @@
+from nexus_runtime_adapters import RuntimeErrorSafe, list_containers as runtime_list, infrastructure_state, create_container as runtime_create, stop_container as runtime_stop
 """
 NEXUS Hybrid DevOps Engine
 Unified DevOps operations combining 20+ industry-leading tools
@@ -61,25 +62,33 @@ class HybridDevOpsEngine:
 
     async def get_infrastructure_state(self) -> Dict:
         """Real infrastructure inventory requires a provider."""
-        return {"success": False, "error": "infrastructure_provider_not_configured",
-                "resources": None}
+        try:
+            return await asyncio.to_thread(infrastructure_state)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc)}
 
     # ==================== CONTAINER MANAGEMENT ====================
     
     async def create_container(self, config: Dict) -> Dict:
         """Require an actual container runtime before reporting creation."""
-        return {"success": False, "error": "container_runtime_not_configured",
-                "container": None, "executed": False}
+        try:
+            return await asyncio.to_thread(runtime_create, config)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "container": None}
 
     async def list_containers(self, status: Optional[str] = None) -> Dict:
         """Container discovery cannot rely on local simulated state."""
-        return {"success": False, "error": "container_runtime_not_configured",
-                "containers": None}
+        try:
+            return await asyncio.to_thread(runtime_list, status)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "containers": None}
 
     async def stop_container(self, container_id: str) -> Dict:
         """Require confirmed stop from a real container runtime."""
-        return {"success": False, "error": "container_runtime_not_configured",
-                "container_id": container_id, "executed": False}
+        try:
+            return await asyncio.to_thread(runtime_stop, container_id)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "state_unconfirmed": True}
 
     # ==================== MONITORING & METRICS ====================
     
