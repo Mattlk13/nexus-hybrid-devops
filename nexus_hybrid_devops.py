@@ -1,3 +1,4 @@
+from nexus_terraform import TerraformAdapter
 from nexus_runtime_adapters import RuntimeErrorSafe, list_containers as runtime_list, infrastructure_state, create_container as runtime_create, stop_container as runtime_stop
 """
 NEXUS Hybrid DevOps Engine
@@ -52,13 +53,21 @@ class HybridDevOpsEngine:
     
     async def create_infrastructure(self, config: Dict) -> Dict:
         """Fail closed until a verified IaC provider adapter is configured."""
-        return {"success": False, "error": "infrastructure_provider_not_configured",
-                "resource": None, "executed": False}
+        try:
+            if not isinstance(config, dict):
+                return {"success": False, "error": "configuration_required"}
+            adapter = TerraformAdapter()
+            return await asyncio.to_thread(adapter.apply, config.get("request_id"), config.get("environment", "certification"))
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "state_unconfirmed": True}
 
     async def destroy_infrastructure(self, resource_id: str) -> Dict:
         """Never claim resource deletion without provider confirmation."""
-        return {"success": False, "error": "infrastructure_provider_not_configured",
-                "resource_id": resource_id, "executed": False}
+        try:
+            adapter = TerraformAdapter()
+            return await asyncio.to_thread(adapter.destroy, resource_id)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "state_unconfirmed": True}
 
     async def get_infrastructure_state(self) -> Dict:
         """Real infrastructure inventory requires a provider."""

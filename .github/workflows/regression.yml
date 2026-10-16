@@ -27,3 +27,9 @@ jobs:
           docker pull alpine:3.22
           export NEXUS_CERTIFICATION_IMAGE=$(docker image inspect alpine:3.22 --format '{{.Id}}')
           python -m unittest -v test_container_integration
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.13.5'
+          terraform_wrapper: false
+      - name: Real isolated Terraform create, duplicate and destroy rollback
+        run: python -m unittest -v test_terraform_integration
