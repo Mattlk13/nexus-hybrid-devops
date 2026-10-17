@@ -1,4 +1,5 @@
 from nexus_terraform import TerraformAdapter
+from nexus_cloudflare import CloudflareStagingAdapter
 from nexus_runtime_adapters import RuntimeErrorSafe, list_containers as runtime_list, infrastructure_state, create_container as runtime_create, stop_container as runtime_stop
 """
 NEXUS Hybrid DevOps Engine
@@ -185,21 +186,29 @@ class HybridDevOpsEngine:
     # ==================== DEPLOYMENT AUTOMATION ====================
     
     async def deploy_service(self, service: str, environment: str, version: str,
-                             strategy: str = "rolling") -> Dict:
-        """Do not simulate tests, deployment, or health checks."""
-        return {"success": False, "error": "deployment_runner_not_configured",
-                "service": service, "environment": environment, "version": version,
-                "executed": False}
+                             strategy: str = "all_at_once") -> Dict:
+        """Deploy an existing version to an explicitly configured staging Worker."""
+        try:
+            adapter=CloudflareStagingAdapter()
+            if strategy!="all_at_once":
+                return {"success":False,"error":"deployment_strategy_not_supported","executed":False}
+            return await asyncio.to_thread(adapter.deploy,service,environment,version)
+        except RuntimeErrorSafe as exc:
+            return {"success":False,"error":str(exc),"state_unconfirmed":True}
 
     async def rollback_deployment(self, service: str, environment: str) -> Dict:
-        """Rollback requires a verified deployment adapter."""
-        return {"success": False, "error": "deployment_runner_not_configured",
-                "service": service, "environment": environment, "executed": False}
+        """Restore only the version in this adapter's owned staging receipt."""
+        try:
+            return await asyncio.to_thread(CloudflareStagingAdapter().rollback,service,environment)
+        except RuntimeErrorSafe as exc:
+            return {"success":False,"error":str(exc),"state_unconfirmed":True}
 
     async def get_deployment_history(self, service: Optional[str] = None, environment: Optional[str] = None) -> Dict:
-        """Do not treat in-memory test records as deployment history."""
-        return {"success": False, "error": "deployment_runner_not_configured",
-                "deployments": None}
+        """Read the currently active provider deployment, without invented history."""
+        try:
+            return await asyncio.to_thread(CloudflareStagingAdapter().history,service,environment)
+        except RuntimeErrorSafe as exc:
+            return {"success":False,"error":str(exc),"state_unconfirmed":True}
 
     # ==================== LOG MANAGEMENT ====================
     

@@ -2,6 +2,19 @@
 
 Decision: **HOLD**. No production deployment, merge, release publication or service purchase.
 
+## Cloudflare staging deployment adapter — 2026-10-17 UTC
+
+- Implemented deploy_service, rollback_deployment and provider current-deployment readback through the Cloudflare deployments API. Only an explicitly configured existing *-staging Worker, environment=staging, existing version UUID and all_at_once strategy are supported. This does not provision resources or upload new application versions.
+- Requires scoped token/account/worker and a private operator-created receipt directory with .nexus-cloudflare-staging marker. Local exclusive lock, durable pending receipt, operation annotations and provider deployment-ID ownership checks guard writes/rollback. Duplicate target version does not mutate. Lost acknowledgements remain pending; rollback may reconcile only the exact persisted operation annotation, target version and provider ID. Other actors' deployments are never intentionally rolled back.
+- PASS locally: 8 Cloudflare tests cover success/duplicate/restore, lost-ack reconciliation, timeout with no blind write retry, concurrent local lock, missing ownership, external deployment interference, production/worker scope, auth/permission redaction and gradual deployment rejection. Live staging acceptance is NOT yet claimed.
+- HTTP timeouts and a 403 remain unconfirmed/ambiguous; a 403 is not falsely classified as a proven permission-only failure. No service token or API response error body is logged. No production endpoint exists in this adapter.
+- Acceptance harness ci/test_cloudflare_staging.py requires explicit live opt-in, the exact nexus2-staging Worker, a known existing test version and expected staging app.js. It verifies provider version/deployment IDs, a changed public asset hash, duplicate without new deployment, original-version rollback and the restored exact asset hash. It is intended for the existing serialized staging-only GitHub workflow using its existing secrets. No new cloud resources or purchases.
+- Cloud-provider Terraform provisioning/destruction and its full live permission/timeout/concurrency matrix remain uncertified. Locking here is local; independent distributed actors can race the API, which has no compare-and-swap in this implementation. Use an exclusively controlled staging target.
+
+Prior current-code baseline 54e6f91 passed Actions 38963933815, including real Docker and Terraform. This adapter change requires fresh CI and live acceptance.
+
+## Prior evidence (historical)
+
 ## Resumed certification results
 
 - PASS: real Terraform 1.13.5 binary, checksum verified against the official release SHA256SUMS. Isolated built-in terraform_data resource creation, duplicate reconciliation, refresh-only state verification, destroy rollback and empty-state readback pass. Seven Terraform tests pass (1 real lifecycle + 6 policy tests).
