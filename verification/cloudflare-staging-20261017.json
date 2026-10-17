@@ -1,0 +1,26 @@
+{
+  "environment": "staging",
+  "worker": "nexus2-staging",
+  "production": "HOLD",
+  "invalidCredentialDenied": true,
+  "deployment": {
+    "success": true,
+    "duplicate": false,
+    "created": true,
+    "verified": true,
+    "version": "f2e125c9-6239-47be-811a-67fe768bc86c",
+    "deployment_id": "dd7f4e77-0a7f-4684-ae86-1e9134a4db13",
+    "rollback_supported": true
+  },
+  "changedAssetSha256": "2dc60e6fcd9d5fd8f2fb3f4a639695e5b5e1879c37c094ea3826039c12614bc8",
+  "duplicateWithoutMutation": true,
+  "rollback": {
+    "success": true,
+    "duplicate": false,
+    "verified": true,
+    "version": "4d7b8bf7-9037-40f3-a260-af4e1a4fe024",
+    "deployment_id": "d429687c-1ce4-4c07-9c26-ee8428438dad"
+  },
+  "restoredAssetSha256": "e185747a2957de5f0d036cdc5a3d740e6b9e9d0e13127a5d2fb92ae9b7ca5991",
+  "providerVersionRestored": true
+}

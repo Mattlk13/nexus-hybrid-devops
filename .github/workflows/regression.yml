@@ -1,0 +1,35 @@
+name: NEXUS DevOps fail-closed tests
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - fix/disable-simulated-operations-20261016
+permissions:
+  contents: read
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -v -p 'test_*.py'
+      - name: Isolated Docker create, duplicate, stop and readback
+        env:
+          NEXUS_CONTAINER_RUNTIME: docker
+        run: |
+          docker pull alpine:3.22
+          export NEXUS_CERTIFICATION_IMAGE=$(docker image inspect alpine:3.22 --format '{{.Id}}')
+          python -m unittest -v test_container_integration
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.13.5'
+          terraform_wrapper: false
+      - name: Real isolated Terraform create, duplicate and destroy rollback
+        run: python -m unittest -v test_terraform_integration

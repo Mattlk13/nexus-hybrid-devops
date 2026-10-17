@@ -1,3 +1,6 @@
+from nexus_terraform import TerraformAdapter
+from nexus_cloudflare import CloudflareStagingAdapter
+from nexus_runtime_adapters import RuntimeErrorSafe, list_containers as runtime_list, infrastructure_state, create_container as runtime_create, stop_container as runtime_stop
 """
 NEXUS Hybrid DevOps Engine
 Unified DevOps operations combining 20+ industry-leading tools
@@ -50,158 +53,53 @@ class HybridDevOpsEngine:
     # ==================== INFRASTRUCTURE AS CODE ====================
     
     async def create_infrastructure(self, config: Dict) -> Dict:
-        """
-        Create infrastructure using IaC principles (Terraform-like)
-        Declarative infrastructure definition
-        """
+        """Fail closed until a verified IaC provider adapter is configured."""
         try:
-            resource_type = config.get('type')  # server, database, storage, network
-            provider = config.get('provider', 'local')
-            
-            resource_id = f"{resource_type}_{int(datetime.now(timezone.utc).timestamp())}"
-            
-            # Simulate infrastructure creation
-            resource = {
-                "id": resource_id,
-                "type": resource_type,
-                "provider": provider,
-                "name": config.get('name'),
-                "config": config,
-                "state": "creating",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "tags": config.get('tags', {})
-            }
-            
-            # Store in memory
-            self.resources[resource_id] = resource
-            
-            # Store in database
-            if self.db:
-                await self.db.infrastructure.insert_one(resource)
-            
-            # Simulate creation delay
-            await asyncio.sleep(0.5)
-            
-            resource["state"] = "running"
-            
-            logger.info(f"✅ Created {resource_type} on {provider}: {resource_id}")
-            
-            return {
-                "success": True,
-                "resource": resource,
-                "message": f"Infrastructure {resource_type} created successfully"
-            }
-            
-        except Exception as e:
-            logger.error(f"Infrastructure creation failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+            if not isinstance(config, dict):
+                return {"success": False, "error": "configuration_required"}
+            adapter = TerraformAdapter()
+            return await asyncio.to_thread(adapter.apply, config.get("request_id"), config.get("environment", "certification"))
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "state_unconfirmed": True}
+
     async def destroy_infrastructure(self, resource_id: str) -> Dict:
-        """Destroy infrastructure resource"""
+        """Never claim resource deletion without provider confirmation."""
         try:
-            if resource_id not in self.resources:
-                return {"success": False, "error": "Resource not found"}
-            
-            resource = self.resources[resource_id]
-            resource["state"] = "destroying"
-            
-            # Simulate destruction
-            await asyncio.sleep(0.3)
-            
-            del self.resources[resource_id]
-            
-            if self.db:
-                await self.db.infrastructure.delete_one({"id": resource_id})
-            
-            return {
-                "success": True,
-                "resource_id": resource_id,
-                "message": "Infrastructure destroyed successfully"
-            }
-            
-        except Exception as e:
-            logger.error(f"Infrastructure destruction failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+            adapter = TerraformAdapter()
+            return await asyncio.to_thread(adapter.destroy, resource_id)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "state_unconfirmed": True}
+
     async def get_infrastructure_state(self) -> Dict:
-        """Get current infrastructure state"""
-        return {
-            "total_resources": len(self.resources),
-            "by_type": self._group_by_key(self.resources, "type"),
-            "by_provider": self._group_by_key(self.resources, "provider"),
-            "by_state": self._group_by_key(self.resources, "state"),
-            "resources": list(self.resources.values())
-        }
-    
+        """Real infrastructure inventory requires a provider."""
+        try:
+            return await asyncio.to_thread(infrastructure_state)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc)}
+
     # ==================== CONTAINER MANAGEMENT ====================
     
     async def create_container(self, config: Dict) -> Dict:
-        """
-        Create and run container (Docker-like)
-        """
+        """Require an actual container runtime before reporting creation."""
         try:
-            container = {
-                "id": f"container_{int(datetime.now(timezone.utc).timestamp())}",
-                "name": config.get('name'),
-                "image": config.get('image'),
-                "ports": config.get('ports', []),
-                "environment": config.get('env', {}),
-                "volumes": config.get('volumes', []),
-                "status": "running",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            # Store container
-            self.resources[container["id"]] = container
-            
-            if self.db:
-                await self.db.containers.insert_one(container)
-            
-            logger.info(f"🐳 Container started: {container['name']}")
-            
-            return {
-                "success": True,
-                "container": container,
-                "message": f"Container {container['name']} started"
-            }
-            
-        except Exception as e:
-            logger.error(f"Container creation failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+            return await asyncio.to_thread(runtime_create, config)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "container": None}
+
     async def list_containers(self, status: Optional[str] = None) -> Dict:
-        """List all containers"""
-        containers = [
-            r for r in self.resources.values()
-            if r.get("image")  # Has image = is a container
-        ]
-        
-        if status:
-            containers = [c for c in containers if c.get("status") == status]
-        
-        return {
-            "total": len(containers),
-            "containers": containers
-        }
-    
-    async def stop_container(self, container_id: str) -> Dict:
-        """Stop a running container"""
+        """Container discovery cannot rely on local simulated state."""
         try:
-            if container_id in self.resources:
-                self.resources[container_id]["status"] = "stopped"
-                
-                return {
-                    "success": True,
-                    "container_id": container_id,
-                    "status": "stopped"
-                }
-            
-            return {"success": False, "error": "Container not found"}
-            
-        except Exception as e:
-            logger.error(f"Container stop failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+            return await asyncio.to_thread(runtime_list, status)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "containers": None}
+
+    async def stop_container(self, container_id: str) -> Dict:
+        """Require confirmed stop from a real container runtime."""
+        try:
+            return await asyncio.to_thread(runtime_stop, container_id)
+        except RuntimeErrorSafe as exc:
+            return {"success": False, "error": str(exc), "state_unconfirmed": True}
+
     # ==================== MONITORING & METRICS ====================
     
     async def collect_metrics(self, service: str, metrics: Dict) -> Dict:
@@ -281,154 +179,37 @@ class HybridDevOpsEngine:
             return {"success": False, "error": str(e)}
     
     async def create_alert(self, config: Dict) -> Dict:
-        """
-        Create monitoring alert (Prometheus Alertmanager-style)
-        """
-        try:
-            alert = {
-                "id": f"alert_{int(datetime.now(timezone.utc).timestamp())}",
-                "name": config.get('name'),
-                "condition": config.get('condition'),  # e.g., "cpu > 80"
-                "service": config.get('service'),
-                "severity": config.get('severity', 'warning'),
-                "notification_channels": config.get('channels', ['email']),
-                "enabled": True,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            if self.db:
-                await self.db.alerts.insert_one(alert)
-            
-            return {
-                "success": True,
-                "alert": alert,
-                "message": f"Alert '{alert['name']}' created"
-            }
-            
-        except Exception as e:
-            logger.error(f"Alert creation failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+        """Monitoring alerts require a real notification/alert backend."""
+        return {"success": False, "error": "alert_backend_not_configured",
+                "executed": False}
+
     # ==================== DEPLOYMENT AUTOMATION ====================
     
-    async def deploy_service(
-        self, 
-        service: str,
-        environment: str,
-        version: str,
-        strategy: str = "rolling"
-    ) -> Dict:
-        """
-        Deploy service (Capistrano/Fabric-style)
-        
-        Strategies: rolling, blue-green, canary
-        """
+    async def deploy_service(self, service: str, environment: str, version: str,
+                             strategy: str = "all_at_once") -> Dict:
+        """Deploy an existing version to an explicitly configured staging Worker."""
         try:
-            deployment_id = f"deploy_{int(datetime.now(timezone.utc).timestamp())}"
-            
-            deployment = {
-                "id": deployment_id,
-                "service": service,
-                "environment": environment,
-                "version": version,
-                "strategy": strategy,
-                "status": "in_progress",
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "steps": []
-            }
-            
-            # Simulate deployment steps
-            steps = [
-                "Pulling code",
-                "Running tests",
-                "Building artifacts",
-                "Stopping old version",
-                "Starting new version",
-                "Health check",
-                "Routing traffic"
-            ]
-            
-            for step in steps:
-                deployment["steps"].append({
-                    "name": step,
-                    "status": "completed",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
-                await asyncio.sleep(0.1)
-            
-            deployment["status"] = "success"
-            deployment["completed_at"] = datetime.now(timezone.utc).isoformat()
-            
-            # Store deployment
-            self.deployments[deployment_id] = deployment
-            
-            if self.db:
-                await self.db.deployments.insert_one(deployment)
-            
-            logger.info(f"✅ Deployed {service} v{version} to {environment}")
-            
-            return {
-                "success": True,
-                "deployment": deployment,
-                "message": f"Deployment completed successfully"
-            }
-            
-        except Exception as e:
-            logger.error(f"Deployment failed: {e}")
-            return {"success": False, "error": str(e)}
-    
+            adapter=CloudflareStagingAdapter()
+            if strategy!="all_at_once":
+                return {"success":False,"error":"deployment_strategy_not_supported","executed":False}
+            return await asyncio.to_thread(adapter.deploy,service,environment,version)
+        except RuntimeErrorSafe as exc:
+            return {"success":False,"error":str(exc),"state_unconfirmed":True}
+
     async def rollback_deployment(self, service: str, environment: str) -> Dict:
-        """Rollback to previous deployment"""
+        """Restore only the version in this adapter's owned staging receipt."""
         try:
-            # Find previous deployment
-            service_deployments = [
-                d for d in self.deployments.values()
-                if d["service"] == service and d["environment"] == environment
-            ]
-            
-            if len(service_deployments) < 2:
-                return {"success": False, "error": "No previous deployment found"}
-            
-            # Get previous version
-            previous = sorted(service_deployments, key=lambda x: x["started_at"])[-2]
-            
-            # Redeploy previous version
-            result = await self.deploy_service(
-                service,
-                environment,
-                previous["version"],
-                strategy="immediate"
-            )
-            
-            return {
-                **result,
-                "rollback": True,
-                "previous_version": previous["version"]
-            }
-            
-        except Exception as e:
-            logger.error(f"Rollback failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def get_deployment_history(
-        self, 
-        service: Optional[str] = None,
-        environment: Optional[str] = None
-    ) -> Dict:
-        """Get deployment history"""
-        deployments = list(self.deployments.values())
-        
-        if service:
-            deployments = [d for d in deployments if d["service"] == service]
-        
-        if environment:
-            deployments = [d for d in deployments if d["environment"] == environment]
-        
-        return {
-            "total": len(deployments),
-            "deployments": sorted(deployments, key=lambda x: x["started_at"], reverse=True)
-        }
-    
+            return await asyncio.to_thread(CloudflareStagingAdapter().rollback,service,environment)
+        except RuntimeErrorSafe as exc:
+            return {"success":False,"error":str(exc),"state_unconfirmed":True}
+
+    async def get_deployment_history(self, service: Optional[str] = None, environment: Optional[str] = None) -> Dict:
+        """Read the currently active provider deployment, without invented history."""
+        try:
+            return await asyncio.to_thread(CloudflareStagingAdapter().history,service,environment)
+        except RuntimeErrorSafe as exc:
+            return {"success":False,"error":str(exc),"state_unconfirmed":True}
+
     # ==================== LOG MANAGEMENT ====================
     
     async def ingest_logs(self, source: str, logs: List[str]) -> Dict:
@@ -577,7 +358,7 @@ class HybridDevOpsEngine:
             "error_tracking": {
                 "features": ["track", "group", "resolve"]
             },
-            "status": "operational"
+            "status": "integration_not_configured"
         }
 
 def create_devops_engine(db=None):
