@@ -47,3 +47,11 @@ Infrastructure create/destroy, production deployments, alert backends and deploy
 `python -m unittest discover -v -p 'test_*.py'`
 
 GitHub Actions runs on the PR branch with contents:read and a bounded job timeout. Review current-head Actions results; prior passing commits are not substitutes for current-head evidence. No tests against live Sentry/Jenkins or a production environment were executed.
+
+## Container release-gate follow-up — 2026-10-17 UTC
+
+Fixed a name-rebinding race: start, post-start inspection and failed-start cleanup now use the verified immutable container ID. Concurrent duplicate requests observe the atomically reserved owner for up to five seconds; duplicate callers do not start or remove its container.
+
+PASS: six real Podman acceptance tests in 47.897 seconds. Four simultaneous duplicate requests converge on one running ID and one owner. A lost start acknowledgement triggers actual removal plus absence readback. Injected cleanup failure remains unconfirmed and leaves the actual fixture present for recovery. A lost stop acknowledgement fails closed; a subsequent provider inspection and repeated stop verify recovery. Existing create/duplicate/stop and failed-start rollback checks also pass. Faults are explicitly injected around real runtime operations; they are not claims of a naturally occurring runtime outage or separate-user permission acceptance. All test fixtures were cleaned up.
+
+PASS: 26 targeted runtime, Cloudflare, Terraform policy and fail-closed unit tests. Current-head Docker CI must independently confirm the expanded acceptance suite. Provider-specific cloud provisioning/destruction and remaining hosted-service gates remain open. Production HOLD.

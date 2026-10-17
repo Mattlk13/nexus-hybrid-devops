@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import time
 
 class RuntimeErrorSafe(RuntimeError):
     pass
@@ -109,18 +110,26 @@ def create_container(config):
     item=_inspect(runtime,name)
     actual_image = str(item.get('Image', '')).removeprefix('sha256:')
     if actual_image != image.removeprefix('sha256:'): raise RuntimeErrorSafe('duplicate_request_conflict')
+    runtime_id=item.get('Id')
+    if not isinstance(runtime_id,str) or not re.fullmatch('[a-f0-9]{64}',runtime_id):
+        raise RuntimeErrorSafe('container_identity_unconfirmed')
+    # Duplicate callers observe the atomic name owner; they never start it.
+    deadline=time.monotonic()+5
+    while result.returncode and not item.get('State',{}).get('Running') and time.monotonic()<deadline:
+        time.sleep(0.1)
+        item=_inspect(runtime,runtime_id)
     if item.get('State',{}).get('Running'):
         return {'success':True,'container':{'id':item['Id'],'status':'running'},'verified':True,'duplicate':True}
     if result.returncode: raise RuntimeErrorSafe('duplicate_request_not_running')
     try:
-        subprocess.run([runtime,'start',name],check=True,stdout=subprocess.DEVNULL,
+        subprocess.run([runtime,'start',runtime_id],check=True,stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL,timeout=20)
-        item=_inspect(runtime,name)
+        item=_inspect(runtime,runtime_id)
         if not item.get('State',{}).get('Running'): raise RuntimeErrorSafe('container_not_running')
     except (OSError,subprocess.SubprocessError,RuntimeErrorSafe) as exc:
-        # Only remove this attempt's newly created, deterministic fixture.
+        # Delete the immutable ID created by this attempt, never a reused name.
         try:
-            subprocess.run([runtime,'rm','--force',name],check=True,stdout=subprocess.DEVNULL,
+            subprocess.run([runtime,'rm','--force',runtime_id],check=True,stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL,timeout=20)
         except (OSError,subprocess.SubprocessError):
             raise RuntimeErrorSafe('container_start_failed_cleanup_unconfirmed') from exc
