@@ -2,11 +2,19 @@
 
 Decision: **HOLD**. No production deployment, merge, release publication or service purchase.
 
+## Live Cloudflare acceptance — 2026-10-17 UTC
+
+PASS: Nexus2 staging-only Actions run [38991358325](https://github.com/Mattlk13/Nexus2/actions/runs/38991358325) tested adapter code adad837. Existing staging version deployment, provider deployment/version readback, changed public app.js hash, duplicate without a new deployment, exact prior-version rollback, repeated rollback and original asset-hash restoration all passed. Invalid credentials were denied live. Raw receipt: verification/cloudflare-staging-20261017.json. No new resources, production deployment or purchases.
+
+Initial runs 38990973509/38991113735 failed before mutation because Python urllib public-asset retrieval received 403. The harness now uses standard credential-free curl, like the existing staging verification. HTTP and exact content-hash assertions remain enabled. No security policy was changed or bypassed.
+
+Adapter code adad837 passed both hosted regression runs 38991357146 and 38991354617, including Docker and Terraform acceptance. This document/evidence follow-up requires its own current-head CI. Live restricted-permission credentials, timeouts, distributed concurrency and rollback failure remain uncertified; mocked tests do not substitute for those gates.
+
 ## Cloudflare staging deployment adapter — 2026-10-17 UTC
 
 - Implemented deploy_service, rollback_deployment and provider current-deployment readback through the Cloudflare deployments API. Only an explicitly configured existing *-staging Worker, environment=staging, existing version UUID and all_at_once strategy are supported. This does not provision resources or upload new application versions.
 - Requires scoped token/account/worker and a private operator-created receipt directory with .nexus-cloudflare-staging marker. Local exclusive lock, durable pending receipt, operation annotations and provider deployment-ID ownership checks guard writes/rollback. Duplicate target version does not mutate. Lost acknowledgements remain pending; rollback may reconcile only the exact persisted operation annotation, target version and provider ID. Other actors' deployments are never intentionally rolled back.
-- PASS locally: 8 Cloudflare tests cover success/duplicate/restore, lost-ack reconciliation, timeout with no blind write retry, concurrent local lock, missing ownership, external deployment interference, production/worker scope, auth/permission redaction and gradual deployment rejection. Live staging acceptance is NOT yet claimed.
+- PASS locally: 8 Cloudflare tests cover success/duplicate/restore, lost-ack reconciliation, timeout with no blind write retry, concurrent local lock, missing ownership, external deployment interference, production/worker scope, auth/permission redaction and gradual deployment rejection. Live acceptance is recorded above; the full live failure matrix is still open.
 - HTTP timeouts and a 403 remain unconfirmed/ambiguous; a 403 is not falsely classified as a proven permission-only failure. No service token or API response error body is logged. No production endpoint exists in this adapter.
 - Acceptance harness ci/test_cloudflare_staging.py requires explicit live opt-in, the exact nexus2-staging Worker, a known existing test version and expected staging app.js. It verifies provider version/deployment IDs, a changed public asset hash, duplicate without new deployment, original-version rollback and the restored exact asset hash. It is intended for the existing serialized staging-only GitHub workflow using its existing secrets. No new cloud resources or purchases.
 - Cloud-provider Terraform provisioning/destruction and its full live permission/timeout/concurrency matrix remain uncertified. Locking here is local; independent distributed actors can race the API, which has no compare-and-swap in this implementation. Use an exclusively controlled staging target.
