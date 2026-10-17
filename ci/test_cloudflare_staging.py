@@ -4,12 +4,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import secrets
+import subprocess
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
-from urllib import request
 from nexus_cloudflare import CloudflareStagingAdapter, RuntimeErrorSafe
 from nexus_hybrid_devops import HybridDevOpsEngine
 
@@ -21,10 +20,16 @@ class LiveStagingDeploymentTests(unittest.TestCase):
         evidence_path=Path(os.environ['NEXUS_CLOUDFLARE_EVIDENCE'])
         def public_source():
             # Token is never attached to a public application request.
-            req=request.Request('https://nexus2-staging.hm2krebsmatthewl.workers.dev/app.js?nexus_cert='+secrets.token_hex(8),headers={'Cache-Control':'no-cache'})
-            with request.urlopen(req,timeout=15) as res:
-                self.assertEqual(res.status,200)
-                return res.read(1048576)
+            with tempfile.TemporaryDirectory(prefix='nexus-public-readback-') as temp:
+                target=Path(temp)/'app.js'
+                env={k:v for k,v in os.environ.items() if k in ('PATH','SystemRoot','HTTPS_PROXY','HTTP_PROXY','NO_PROXY','SSL_CERT_FILE','CURL_CA_BUNDLE')}
+                result=subprocess.run(['curl','--disable','--proto','=https','--max-time','15','--fail','--silent','--show-error','--compressed',
+                    '--header','Cache-Control: no-cache','--output',str(target),
+                    'https://nexus2-staging.hm2krebsmatthewl.workers.dev/app.js'],
+                    env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20,check=False)
+                self.assertEqual(result.returncode,0,'public staging asset HTTP readback failed')
+                self.assertLessEqual(target.stat().st_size,1048576)
+                return target.read_bytes()
         def await_hash(expected,equal=True):
             for attempt in range(10):
                 actual=hashlib.sha256(public_source()).hexdigest()
